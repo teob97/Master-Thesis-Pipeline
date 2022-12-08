@@ -44,10 +44,10 @@ function get_single_map(frequency, nside)
 end
 
 # Calcola il cielo alle varie frequenze per ogni strumento
-function get_foreground_maps(instruments::Array{Instrument}, nside::Int32)
-    maps = []
+function get_foreground_maps(instruments::Array{Instrument}, nside)
+    maps = Healpix.PolarizedHealpixMap[]
     for i in instruments
-        append!(maps, get_single_map(i.frequency, nside))
+        push!(maps, get_single_map(i.frequency, nside))
     end
     return maps
 end
@@ -56,12 +56,12 @@ end
 # cam_ang è sempre lo stesso nell'ipotesi che i vari strumenti osservino gli stessi pixel nel cielo
 function get_observations(
     cam_ang :: Sl.CameraAngles, 
-    signals :: Array{PolarizedHealpixMap}, 
+    signals :: Vector{PolarizedHealpixMap}, 
     setup :: PRMaps.Setup
     )
-    observations = []
+    observations = Healpix.PolarizedHealpixMap[]
     for signal in signals
-        append!(observations, PRMaps.makeIdealMapIQU(cam_ang, signal, setup))
+        push!(observations, PRMaps.makeIdealMapIQU(cam_ang, signal, setup)[1])
     end
     return observations 
 end
