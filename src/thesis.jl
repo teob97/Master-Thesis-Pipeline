@@ -3,10 +3,12 @@ module thesis
 using PyCall
 using PRMaps
 using Healpix
+using Random, Distributions
 import Stripeline as Sl
 
 export Instrument
-export get_single_map, get_foreground_maps, get_observations
+export get_single_map, get_foreground_maps, get_observations, get_white_noise
+export add_white_noise!
 
 # This function is automatically called when module is loaded
 # I define here all the python function that I need
@@ -30,7 +32,7 @@ Base.@kwdef struct Instrument
     noisePerPixel :: Float64 = 0.0
 end
 
-# Produce HealpixPolarizedMap in μK_CMB
+# Produce PolarizedHealpixMap in μK_CMB
 function get_single_map(frequency, nside)
     
     map = Healpix.PolarizedHealpixMap{Float64, RingOrder}(nside)
@@ -58,7 +60,7 @@ function get_observations(
     cam_ang :: Sl.CameraAngles, 
     signals :: Vector{PolarizedHealpixMap}, 
     setup :: PRMaps.Setup
-    )
+)
     observations = Healpix.PolarizedHealpixMap[]
     for signal in signals
         push!(observations, PRMaps.makeIdealMapIQU(cam_ang, signal, setup)[1])
@@ -66,6 +68,32 @@ function get_observations(
     return observations 
 end
 
+function get_white_noise(nside, sigma)
+
+    map = PolarizedHealpixMap{Float64, RingOrder}(nside)
+
+    noise_i = rand(Normal(0.0, sigma), nside*nside*12)
+    noise_q = rand(Normal(0.0, sigma), nside*nside*12)
+    noise_u = rand(Normal(0.0, sigma), nside*nside*12)
+
+    map.i.pixels = noise_i
+    map.q.pixels = noise_q
+    map.u.pixels = noise_u
+    
+    return map
+end
+
+function add_white_noise!(signal, instrument)
+
+    pixel_size = Healpix.nside2pixarea(signal.i.resolution.nside)
+    sigma = instrument.noisePerPixel * pixel_size * (180/π)^2
+    noise = get_white_noise(signal.i.resolution.nside, sigma)
+
+    signal.i = signal.i + noise.i
+    signal.q = signal.q + noise.q
+    signal.u = signal.u + noise.u
+
+end
 
 end # module thesis
 
