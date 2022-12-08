@@ -1,0 +1,11 @@
+name = "thesis"
+uuid = "bfc66060-aa64-41e9-86a8-567451061084"
+authors = ["Matteo Baratto <teo.baratto.97@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+Healpix = "9f4e344d-96bc-545a-84a3-ae6b9e1b672b"
+PRMaps = "fd40e84c-20b6-49bc-bda0-919ee04f3f0e"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+Stripeline = "45029ab0-c194-11e8-0c82-65ed36a31fad"
