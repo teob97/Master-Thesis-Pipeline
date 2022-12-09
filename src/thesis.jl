@@ -9,7 +9,7 @@ import Stripeline as Sl
 export Instrument
 export get_single_map, get_foreground_maps, get_observations, get_white_noise
 export add_white_noise!
-export map2vec, fgbuster_basic_comp_sep
+export map2vec, fgbuster_basic_comp_sep, get_mvDistro
 
 # Define python functions ---------------------------------------------------------------------------
 
@@ -18,11 +18,11 @@ function __init__()
     py"""
     import pysm3
     import pysm3.units as u
-    
+    import fgbuster
+
     import pandas as pd
     import healpy as hp
-    
-    import fgbuster
+    import numpy as np
 
     def pysm_sky_IQU(frequency, nside):
         sky = pysm3.Sky(nside=nside, preset_strings=["c1","d0","s0"])
@@ -43,6 +43,9 @@ function __init__()
         components = [fgbuster.CMB(), fgbuster.Dust(353.), fgbuster.Synchrotron(23.)]
         return fgbuster.basic_comp_sep(components, instrument, data[:,1:])
 
+    def get_mvDistibution(result):
+        return np.random.multivariate_normal(result['x'], result['Sigma'], 100000)
+    
     """
 end
 
@@ -106,11 +109,14 @@ function get_white_noise(nside, sigma)
     return map
 end
 
-function add_white_noise!(signal, instrument)
+function add_white_noise!(signal, instrument, setup)
 
-    pixel_size = Healpix.nside2pixarea(signal.i.resolution.nside)
-    sigma = instrument.noisePerPixel * pixel_size * (180/π)^(2)
-    noise = get_white_noise(signal.i.resolution.nside, sigma)
+    nside = signal.i.resolution.nside
+
+    pixel_size = Healpix.nside2pixarea(nside) * (180.0/π)^(2)
+    average_hits = (setup.total_time_s * setup.sampling_freq_Hz) / (nside * nside * 12)
+    sigma = instrument.noisePerPixel * pixel_size * (1/sqrt(average_hits))
+    noise = get_white_noise(nside, sigma)
 
     signal.i = signal.i + noise.i
     signal.q = signal.q + noise.q
@@ -134,6 +140,10 @@ end
 function fgbuster_basic_comp_sep(maps, instruments)
     data = map2vec(maps)
     return py"fgbuster_pipeline"(data, instruments)    
+end
+
+function get_mvDistro(result)
+    return py"get_mvDistibution"(result)
 end
 
 end # module thesis
