@@ -9,7 +9,7 @@ import Stripeline as Sl
 export Instrument
 export get_single_map, get_foreground_maps, get_observations, get_white_noise
 export add_white_noise!
-export map2vec, fgbuster_basic_comp_sep, get_mvDistro
+export map2vec, fgbuster_basic_comp_sep, get_mv_distribution
 
 # Define python functions ---------------------------------------------------------------------------
 
@@ -24,10 +24,12 @@ function __init__()
     import healpy as hp
     import numpy as np
 
+    import numpy.ma as ma
+
     def pysm_sky_IQU(frequency, nside):
         sky = pysm3.Sky(nside=nside, preset_strings=["c1","d0","s0"])
         emission = sky.get_emission(frequency * u.GHz)
-        emission = emission.to(u.uK_CMB, equivalencies=u.cmb_equivalencies(frequency * u.GHz))
+        # emission = emission.to(u.uK_CMB, equivalencies=u.cmb_equivalencies(frequency * u.GHz))
         return pysm3.apply_smoothing_and_coord_transform(emission, rot=hp.Rotator(coord=("G", "C")))
 
     def get_df(instruments):
@@ -39,12 +41,21 @@ function __init__()
 
     def fgbuster_pipeline(data, instruments):
         instrument = get_df(instruments)
+        
+        data = ma.masked_values(data, hp.UNSEEN)
+
+        # Devo convertire in kelvin?
+        # data = data * 1e-6
+
         # Componenti settate per le mappe in polarizzazione [NON SICURO SE LA FREQ DI RIFERIMENTO SIA GIUSTA]
-        components = [fgbuster.CMB(), fgbuster.Dust(353.), fgbuster.Synchrotron(23.)]
+        components = [fgbuster.CMB(units='K_RJ'), fgbuster.Dust(353., units='K_RJ'), fgbuster.Synchrotron(23., units='K_RJ')]
+        # components = [fgbuster.CMB(), fgbuster.Dust(353.), fgbuster.Synchrotron(23.)]
         return fgbuster.basic_comp_sep(components, instrument, data[:,1:])
+        # return fgbuster.basic_comp_sep(components, instrument, data)
+
 
     def get_mvDistibution(result):
-        return np.random.multivariate_normal(result['x'], result['Sigma'], 100000)
+        return np.random.multivariate_normal(result['x'], result['Sigma'], 10000)
     
     """
 end
@@ -113,9 +124,13 @@ function add_white_noise!(signal, instrument, setup)
 
     nside = signal.i.resolution.nside
 
+    # Calcolo grandezza pixel in deg^2
     pixel_size = Healpix.nside2pixarea(nside) * (180.0/π)^(2)
+    # Calcolo numero medio di volte che un pixel viene colpito
     average_hits = (setup.total_time_s * setup.sampling_freq_Hz) / (nside * nside * 12)
-    sigma = instrument.noisePerPixel * pixel_size * (1/sqrt(average_hits))
+    # Divido errore pr la radice del numero medio di volte che pixel è colpito
+    sigma = (instrument.noisePerPixel * pixel_size) / sqrt(average_hits)
+    
     noise = get_white_noise(nside, sigma)
 
     signal.i = signal.i + noise.i
@@ -142,7 +157,7 @@ function fgbuster_basic_comp_sep(maps, instruments)
     return py"fgbuster_pipeline"(data, instruments)    
 end
 
-function get_mvDistro(result)
+function get_mv_distribution(result)
     return py"get_mvDistibution"(result)
 end
 
