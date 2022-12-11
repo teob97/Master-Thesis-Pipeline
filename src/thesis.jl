@@ -3,13 +3,15 @@ module thesis
 using PyCall
 using PRMaps
 using Healpix
+using StatsPlots
 using Random, Distributions
+using Logging
 import Stripeline as Sl
 
-export Instrument
+export Instrument, run_simulation, run_simulation_with_error, get_corrplot, get_map_and_hist
 export get_single_map, get_foreground_maps, get_observations, get_white_noise
 export add_white_noise!
-export map2vec, fgbuster_basic_comp_sep, get_mv_distribution
+export map2vec, fgbuster_basic_comp_sep
 
 # Define python functions ---------------------------------------------------------------------------
 
@@ -27,9 +29,8 @@ function __init__()
     import numpy.ma as ma
 
     def pysm_sky_IQU(frequency, nside):
-        sky = pysm3.Sky(nside=nside, preset_strings=["c1","d0","s0"])
+        sky = pysm3.Sky(nside=nside, preset_strings=["c1","d0","s0"], output_unit=u.uK_RJ)
         emission = sky.get_emission(frequency * u.GHz)
-        # emission = emission.to(u.uK_CMB, equivalencies=u.cmb_equivalencies(frequency * u.GHz))
         return pysm3.apply_smoothing_and_coord_transform(emission, rot=hp.Rotator(coord=("G", "C")))
 
     def get_df(instruments):
@@ -157,8 +158,88 @@ function fgbuster_basic_comp_sep(maps, instruments)
     return py"fgbuster_pipeline"(data, instruments)    
 end
 
-function get_mv_distribution(result)
-    return py"get_mvDistibution"(result)
+
+# Simulation without poining errors
+function run_simulation(
+    instruments :: Vector{Instrument},
+    cam_ang :: Sl.CameraAngles,
+    setup :: PRMaps.Setup,
+    nside :: Int,
+)
+    @info "Generating sky signal using pysm3"
+    signals = get_foreground_maps(instruments, nside)
+    
+    @info "Adding white noise based on the instruments sensitivity"
+    for indx in size(signals, 1)
+        add_white_noise!(signals[indx], instruments[indx], setup) 
+    end
+
+    @info "Simulating telescope scanning strategy [LSPE/Strip]"
+    observations = get_observations(cam_ang, signals, setup)
+
+    @info "Run component separation using fgbuster"
+    return fgbuster_basic_comp_sep(observations, instruments)
+
+end
+
+function run_simulation_with_error()
+    nothing
+end
+
+function get_corrplot(result)
+    sampling = py"get_mvDistibution"(result)
+    return corrplot(sampling, label = result["params"], size = (1500,700), fillcolor =:thermal, bottom_margin = 6Plots.mm, left_margin = 6Plots.mm)
+end
+
+function get_map_and_hist(result, stokes_param::String, nside::Int)
+
+    if size(result["s"], 2) == 1
+        if stokes_param == "I"
+            stokes_indx = 1
+        else
+            @error "Wrong stokes_param: it must be I"
+        end
+    elseif size(result["s"], 2) == 2
+        if stokes_param == "Q"
+            stokes_indx = 1
+        elseif stokes_param == "U"
+            stokes_indx = 2
+        else
+            @error "Wrong stokes_param: it must be Q or U"
+        end
+    elseif size(result["s"], 2) == 3
+        if stokes_param == "I"
+            stokes_indx = 1
+        elseif stokes_param == "Q"
+            stokes_indx = 2
+        elseif stokes_param == "U"
+            stokes_indx = 3
+        else
+            @error "Wrong stokes_param: it must be one between I,Q,U"
+        end
+    else
+        @error "Wrong result size"
+    end
+
+    result["s"][result["s"] .== -1.6375e+30] .= NaN
+
+    cmb = HealpixMap{Float64, RingOrder}(nside)
+    dust = HealpixMap{Float64, RingOrder}(nside)
+    synchrotron = HealpixMap{Float64, RingOrder}(nside)
+
+    cmb.pixels = result["s"][1,stokes_indx,:]
+    dust.pixels = result["s"][2,stokes_indx,:]
+    synchrotron.pixels = result["s"][3,stokes_indx,:]
+
+    p1 = plot(cmb, title = "CMB_"*stokes_param, show = false)
+    p2 = plot(dust, title = "Dust_"*stokes_param, show = false)
+    p3 = plot(synchrotron, title = "Synchrotron_"*stokes_param, show = false)
+
+    h1 = histogram(cmb[isfinite.(cmb)], normalize = true, show = false, legend = false)
+    h2 = histogram(dust[isfinite.(dust)], normalize = true, show = false, legend = false)
+    h3 = histogram(synchrotron[isfinite.(synchrotron)], normalize = true, show = false, legend = false)
+
+    return plot(p1,p2,p3, h1,h2,h3, layout = (2,3), size = (1500, 500))
 end
 
 end # module thesis
