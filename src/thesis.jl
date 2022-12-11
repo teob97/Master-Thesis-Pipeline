@@ -4,6 +4,7 @@ using PyCall
 using PRMaps
 using Healpix
 using StatsPlots
+using StructArrays
 using Random, Distributions
 using Logging
 import Stripeline as Sl
@@ -83,7 +84,7 @@ function get_single_map(frequency, nside)
 end
 
 # Calcola il cielo alle varie frequenze per ogni strumento
-function get_foreground_maps(instruments::Array{Instrument}, nside)
+function get_foreground_maps(instruments, nside)
     maps = Healpix.PolarizedHealpixMap[]
     for i in instruments
         push!(maps, get_single_map(i.frequency, nside))
@@ -101,6 +102,19 @@ function get_observations(
     observations = Healpix.PolarizedHealpixMap[]
     for signal in signals
         push!(observations, PRMaps.makeIdealMapIQU(cam_ang, signal, setup)[1])
+    end
+    return observations 
+end
+
+function get_observations_with_error(
+    cam_ang :: Sl.CameraAngles,
+    tel_ang :: Sl.TelescopeAngles,
+    signals :: Vector{PolarizedHealpixMap}, 
+    setup :: PRMaps.Setup
+)
+    observations = Healpix.PolarizedHealpixMap[]
+    for signal in signals
+        push!(observations, PRMaps.makeErroredMapIQU(cam_ang, tel_ang, signal, setup)[1])
     end
     return observations 
 end
@@ -143,7 +157,7 @@ end
 # Converte una lista di PolarizedHealpixMap in un vettore con row-major order,
 # conpatibile con Python ed fgbuster
 function map2vec(maps)
-    v = zeros(maps[1].i.resolution.numOfPixels, 3, length(maps))
+    v = zeros(maps[1].i.resolution.numOfPixels, 3, size(maps,1))
     for (index, m) in enumerate(maps)
         v[:,1,index] = m.i.pixels
         v[:,2,index] = m.q.pixels
@@ -161,7 +175,7 @@ end
 
 # Simulation without poining errors
 function run_simulation(
-    instruments :: Vector{Instrument},
+    instruments,
     cam_ang :: Sl.CameraAngles,
     setup :: PRMaps.Setup,
     nside :: Int,
@@ -182,8 +196,44 @@ function run_simulation(
 
 end
 
-function run_simulation_with_error()
-    nothing
+function run_simulation_with_error(
+    instruments :: StructArrays.StructArray,
+    cam_ang :: Sl.CameraAngles,
+    tel_ang :: Sl.TelescopeAngles,
+    setup :: PRMaps.Setup,
+    nside :: Int,
+)
+    # Separate LSPE/Strip experiment from the others
+    if !any(instruments.name .== "LSPE/Strip")
+        error("Invalid simulation: no Instrument named LSPE/Strip found")
+    end
+    # Remove LSPE/Strip from the instruments vector and store them in another vector 
+    strip = filter(z -> z.name == "LSPE/Strip", instruments)
+    filter!(z -> z.name != "LSPE/Strip", instruments)
+    
+    @info "Generating sky signal using pysm3"
+    signals = get_foreground_maps(instruments, nside)
+    signals_strip = get_foreground_maps(strip, nside)
+    
+    @info "Adding white noise based on the instruments sensitivity"
+    for indx in size(signals, 1)
+        add_white_noise!(signals[indx], instruments[indx], setup) 
+    end
+    for indx in size(signals_strip, 1)
+        add_white_noise!(signals_strip[indx], strip[indx], setup) 
+    end
+
+    @info "Simulating telescope scanning strategy [LSPE/Strip WITH pointing error]"
+    observations = get_observations(cam_ang, signals, setup)
+    observations_strip = get_observations_with_error(cam_ang, tel_ang, signals_strip, setup)
+
+    # Append LSPE/Strip result to the other results 
+    StructArrays.append!!(instruments, strip)
+    append!(observations, observations_strip)
+
+    @info "Run component separation using fgbuster"
+    return fgbuster_basic_comp_sep(observations, instruments)  
+
 end
 
 function get_corrplot(result)
@@ -197,7 +247,7 @@ function get_map_and_hist(result, stokes_param::String, nside::Int)
         if stokes_param == "I"
             stokes_indx = 1
         else
-            @error "Wrong stokes_param: it must be I"
+            error("Wrong stokes_param: it must be I")
         end
     elseif size(result["s"], 2) == 2
         if stokes_param == "Q"
@@ -205,7 +255,7 @@ function get_map_and_hist(result, stokes_param::String, nside::Int)
         elseif stokes_param == "U"
             stokes_indx = 2
         else
-            @error "Wrong stokes_param: it must be Q or U"
+            error("Wrong stokes_param: it must be Q or U")
         end
     elseif size(result["s"], 2) == 3
         if stokes_param == "I"
@@ -215,10 +265,10 @@ function get_map_and_hist(result, stokes_param::String, nside::Int)
         elseif stokes_param == "U"
             stokes_indx = 3
         else
-            @error "Wrong stokes_param: it must be one between I,Q,U"
+            error("Wrong stokes_param: it must be one between I,Q,U")
         end
     else
-        @error "Wrong result size"
+        error("Wrong result size")
     end
 
     result["s"][result["s"] .== -1.6375e+30] .= NaN
