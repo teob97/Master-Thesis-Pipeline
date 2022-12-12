@@ -182,14 +182,14 @@ function run_simulation(
 )
     @info "Generating sky signal using pysm3"
     signals = get_foreground_maps(instruments, nside)
-    
-    @info "Adding white noise based on the instruments sensitivity"
-    for indx in size(signals, 1)
-        add_white_noise!(signals[indx], instruments[indx], setup) 
-    end
 
     @info "Simulating telescope scanning strategy [LSPE/Strip]"
     observations = get_observations(cam_ang, signals, setup)
+
+    @info "Adding white noise based on the instruments sensitivity"
+    for indx in size(signals, 1)
+        add_white_noise!(observations[indx], instruments[indx], setup) 
+    end
 
     @info "Run component separation using fgbuster"
     return fgbuster_basic_comp_sep(observations, instruments)
@@ -214,14 +214,6 @@ function run_simulation_with_error(
     @info "Generating sky signal using pysm3"
     signals = get_foreground_maps(instruments, nside)
     signals_strip = get_foreground_maps(strip, nside)
-    
-    @info "Adding white noise based on the instruments sensitivity"
-    for indx in size(signals, 1)
-        add_white_noise!(signals[indx], instruments[indx], setup) 
-    end
-    for indx in size(signals_strip, 1)
-        add_white_noise!(signals_strip[indx], strip[indx], setup) 
-    end
 
     @info "Simulating telescope scanning strategy [LSPE/Strip WITH pointing error]"
     observations = get_observations(cam_ang, signals, setup)
@@ -230,6 +222,11 @@ function run_simulation_with_error(
     # Append LSPE/Strip result to the other results 
     StructArrays.append!!(instruments, strip)
     append!(observations, observations_strip)
+
+    @info "Adding white noise based on the instruments sensitivity"
+    for indx in size(signals, 1)
+        add_white_noise!(observations[indx], instruments[indx], setup) 
+    end
 
     @info "Run component separation using fgbuster"
     return fgbuster_basic_comp_sep(observations, instruments)  
