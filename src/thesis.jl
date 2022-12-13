@@ -199,7 +199,9 @@ function run_simulation(
     noise = get_noise_maps(instruments, nside)
 
     @info "Simulating telescope scanning strategy [LSPE/Strip]"
-    observations = get_observations(cam_ang, signals, setup)
+    #observations = get_observations(cam_ang, signals, setup)
+
+    observations, _ = PRMaps.makeIdealMapsIQU(cam_ang, signals, setup)
 
     @info "Adding white noise based on the instruments sensitivity"
     for indx in axes(observations, 1)
@@ -234,8 +236,8 @@ function run_simulation_with_error(
     signals_strip = get_foreground_maps(strip, sky_model, nside)
 
     @info "Simulating telescope scanning strategy [LSPE/Strip WITH pointing error]"
-    observations = get_observations(cam_ang, signals, setup)
-    observations_strip = get_observations_with_error(cam_ang, tel_ang, signals_strip, setup)
+    observations, _ = makeIdealMapsIQU(cam_ang, signals, setup)
+    observations_strip, _ = makeErroredMapsIQU(cam_ang, tel_ang, signals_strip, setup)
 
     # Append LSPE/Strip result to the other results 
     instruments = Pandas.concat([instruments, strip])
