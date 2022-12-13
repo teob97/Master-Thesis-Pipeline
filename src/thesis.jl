@@ -4,7 +4,7 @@ using PyCall
 using PRMaps
 using Healpix
 using StatsPlots
-using StructArrays
+using Pandas
 using Random, Distributions
 using Logging
 import Stripeline as Sl
@@ -195,7 +195,7 @@ function run_simulation(
     cam_ang :: Sl.CameraAngles,
     setup :: PRMaps.Setup,
     sky_model :: String,
-    nside :: Int,
+    nside :: Int
 )
     @info "Generating sky signal and noise"
     signals = get_foreground_maps(instruments, sky_model, nside)
@@ -221,35 +221,43 @@ function run_simulation_with_error(
     cam_ang :: Sl.CameraAngles,
     tel_ang :: Sl.TelescopeAngles,
     setup :: PRMaps.Setup,
-    nside :: Int,
+    sky_model :: String,
+    nside :: Int
 )
     # Separate LSPE/Strip experiment from the others
-    if !any(instruments.name .== "LSPE/Strip")
+    if !any(instruments.instrument .== "LSPE/Strip")
         error("Invalid simulation: no Instrument named LSPE/Strip found")
     end
     # Remove LSPE/Strip from the instruments vector and store them in another vector 
-    strip = filter(z -> z.name == "LSPE/Strip", instruments)
-    filter!(z -> z.name != "LSPE/Strip", instruments)
+    strip = query(instruments, :(instrument=="LSPE/Strip"))
+    instruments = query(instruments, :(instrument!="LSPE/Strip"))
     
     @info "Generating sky signal using pysm3"
-    signals = get_foreground_maps(instruments, nside)
-    signals_strip = get_foreground_maps(strip, nside)
+    signals = get_foreground_maps(instruments, sky_model, nside)
+    signals_strip = get_foreground_maps(strip, sky_model, nside)
+
+    @info "Adding white noise based on the instruments sensitivity"
+    for indx in axes(signals, 1)
+        observations[indx].i.pixels += noise[indx].i.pixels
+        observations[indx].q.pixels += noise[indx].q.pixels 
+        observations[indx].u.pixels += noise[indx].u.pixels 
+    end
+    for indx in axes(signals_strip, 1)
+        observations[indx].i.pixels += noise[indx].i.pixels
+        observations[indx].q.pixels += noise[indx].q.pixels 
+        observations[indx].u.pixels += noise[indx].u.pixels 
+    end
 
     @info "Simulating telescope scanning strategy [LSPE/Strip WITH pointing error]"
     observations = get_observations(cam_ang, signals, setup)
     observations_strip = get_observations_with_error(cam_ang, tel_ang, signals_strip, setup)
 
     # Append LSPE/Strip result to the other results 
-    StructArrays.append!!(instruments, strip)
+    instruments = Pandas.concat(instruments, strip)
     append!(observations, observations_strip)
 
-    @info "Adding white noise based on the instruments sensitivity"
-    for indx in size(signals, 1)
-        add_white_noise!(observations[indx], instruments[indx], setup) 
-    end
-
     @info "Run component separation using fgbuster"
-    return fgbuster_basic_comp_sep(observations, instruments)  
+    return fgbuster_basic_comp_sep(instruments, observations)  
 
 end
 
