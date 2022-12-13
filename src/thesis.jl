@@ -10,9 +10,11 @@ using Logging
 import Stripeline as Sl
 
 export Instrument, run_simulation, run_simulation_with_error, get_corrplot, get_map_and_hist
-export get_single_map, get_foreground_maps, get_observations, get_white_noise
+export get_single_map, get_observations, get_white_noise
 export add_white_noise!
 export map2vec, fgbuster_basic_comp_sep
+
+export get_foreground_maps, get_noise_maps
 
 # Define python functions ---------------------------------------------------------------------------
 
@@ -27,34 +29,30 @@ function __init__()
     import healpy as hp
     import numpy as np
 
-    import numpy.ma as ma
+    #def pysm_sky_IQU(frequency, nside):
+    #    sky = pysm3.Sky(nside=nside, preset_strings=["c1","d0","s0"], output_unit=u.uK_RJ)
+    #    emission = sky.get_emission(frequency * u.GHz)
+    #    return pysm3.apply_smoothing_and_coord_transform(emission, rot=hp.Rotator(coord=("G", "C")))
 
-    def pysm_sky_IQU(frequency, nside):
-        sky = pysm3.Sky(nside=nside, preset_strings=["c1","d0","s0"], output_unit=u.uK_RJ)
-        emission = sky.get_emission(frequency * u.GHz)
-        return pysm3.apply_smoothing_and_coord_transform(emission, rot=hp.Rotator(coord=("G", "C")))
+    def get_freq_maps(instruments, sky_model, nside, unit):
+        emissions = fgbuster.get_observation(instruments, sky_model, noise = False, nside = nside, unit = unit)
+        for i,emission in enumerate(emissions):
+            emissions[i] = pysm3.apply_smoothing_and_coord_transform(emission, rot=hp.Rotator(coord=("G", "C")))
+        return emissions
 
-    def get_df(instruments):
-        buffer = []
-        for i in instruments:
-            buffer.append([i.frequency])       
-        df = pd.DataFrame(buffer, columns = ['frequency'])        
-        return df
+    def get_noise_maps(instruments, nside, unit):
+        return fgbuster.get_noise_realization(nside, instruments, unit)
 
-    def fgbuster_pipeline(data, instruments):
-        instrument = get_df(instruments)
-        
-        data = ma.masked_values(data, hp.UNSEEN)
+    #def get_df(instruments):
+    #    buffer = []
+    #    for i in instruments:
+    #        buffer.append([i.frequency])       
+    #    df = pd.DataFrame(buffer, columns = ['frequency'])        
+    #    return df
 
-        # Devo convertire in kelvin?
-        # data = data * 1e-6
-
-        # Componenti settate per le mappe in polarizzazione [NON SICURO SE LA FREQ DI RIFERIMENTO SIA GIUSTA]
-        components = [fgbuster.CMB(units='K_RJ'), fgbuster.Dust(353., units='K_RJ'), fgbuster.Synchrotron(23., units='K_RJ')]
-        # components = [fgbuster.CMB(), fgbuster.Dust(353.), fgbuster.Synchrotron(23.)]
-        return fgbuster.basic_comp_sep(components, instrument, data[:,1:])
-        # return fgbuster.basic_comp_sep(components, instrument, data)
-
+    def fgbuster_pipeline(instruments, data):
+        components = [fgbuster.CMB(), fgbuster.Dust(353.), fgbuster.Synchrotron(23.)] 
+        return fgbuster.basic_comp_sep(components, instruments, data[:,1:])
 
     def get_mvDistibution(result):
         return np.random.multivariate_normal(result['x'], result['Sigma'], 10000)
@@ -64,31 +62,60 @@ end
 
 #------------------------------------------------------------------------------------------------------
 
-Base.@kwdef struct Instrument
+#= Base.@kwdef struct Instrument
     name :: String = ""
     frequency :: Float64 = 0.0
     noisePerPixel :: Float64 = 0.0
-end
+end =#
 
-# Produce PolarizedHealpixMap in μK_CMB
-function get_single_map(frequency, nside)
-    
-    map = Healpix.PolarizedHealpixMap{Float64, RingOrder}(nside)
-    py_map = py"pysm_sky_IQU"(frequency, nside)
+#--------------------------------------------------------------------------------------------------------
 
-    map.i.pixels = py_map[1,:]
-    map.q.pixels = py_map[2,:]
-    map.u.pixels = py_map[3,:]
-
-    return map
-end
-
-# Calcola il cielo alle varie frequenze per ogni strumento
-function get_foreground_maps(instruments, nside)
-    maps = Healpix.PolarizedHealpixMap[]
-    for i in instruments
-        push!(maps, get_single_map(i.frequency, nside))
+# Converte una lista di PolarizedHealpixMap in un vettore con row-major order,
+# conpatibile con Python ed fgbuster
+function map2vec(maps)
+    v = zeros(maps[1].i.resolution.numOfPixels, 3, size(maps,1))
+    for (index, m) in enumerate(maps)
+        v[:,1,index] = m.i.pixels
+        v[:,2,index] = m.q.pixels
+        v[:,3,index] = m.u.pixels
     end
+    v[isnan.(v)] .= -1.6375e+30 # TROVARE UN MODO MIGLIORE USANDO IN PYTHON healpy.UNSEEN
+    return PyReverseDims(v)
+end
+
+function vec2map(vec)
+    maps = Healpix.PolarizedHealpixMap[]
+    for indx in axes(vec,1)
+        map = PolarizedHealpixMap{Float64, RingOrder}(64)
+        map.i.pixels = vec[indx,1,:]
+        map.q.pixels = vec[indx,2,:]
+        map.u.pixels = vec[indx,3,:]
+        push!(maps, map)
+    end
+    return maps
+end
+
+#--------------------------------------------------------------------------------------------------------
+
+# Calcola il cielo alle varie frequenze per ogni strumento e restituisce un PolarizedHealpixMap
+function get_foreground_maps(
+    instruments, 
+    sky_model::String, 
+    nside::Int; 
+    unit::String = "uK_CMB"
+)
+    results = py"get_freq_maps"(instruments, sky_model, nside, unit)
+    maps = vec2map(results)
+    return maps
+end
+
+function get_noise_maps(
+    instruments,
+    nside::Int;
+    unit::String = "uK_CMB" 
+)
+    results = py"get_noise_maps"(instruments, nside, unit)
+    maps = vec2map(results)
     return maps
 end
 
@@ -120,7 +147,7 @@ function get_observations_with_error(
 end
 
 # Genera rumero bianco per una singola PolarizedHealpixMap
-function get_white_noise(nside, sigma)
+#= function get_white_noise(nside, sigma)
 
     map = PolarizedHealpixMap{Float64, RingOrder}(nside)
 
@@ -152,24 +179,13 @@ function add_white_noise!(signal, instrument, setup)
     signal.q = signal.q + noise.q
     signal.u = signal.u + noise.u
 
-end
+end =#
 
-# Converte una lista di PolarizedHealpixMap in un vettore con row-major order,
-# conpatibile con Python ed fgbuster
-function map2vec(maps)
-    v = zeros(maps[1].i.resolution.numOfPixels, 3, size(maps,1))
-    for (index, m) in enumerate(maps)
-        v[:,1,index] = m.i.pixels
-        v[:,2,index] = m.q.pixels
-        v[:,3,index] = m.u.pixels
-    end
-    v[isnan.(v)] .= -1.6375e+30 # TROVARE UN MODO MIGLIORE USANDO IN PYTHON healpy.UNSEEN
-    return PyReverseDims(v)
-end
 
-function fgbuster_basic_comp_sep(maps, instruments)
+
+function fgbuster_basic_comp_sep(instruments, maps)
     data = map2vec(maps)
-    return py"fgbuster_pipeline"(data, instruments)    
+    return py"fgbuster_pipeline"(instruments, data)    
 end
 
 
@@ -178,21 +194,25 @@ function run_simulation(
     instruments,
     cam_ang :: Sl.CameraAngles,
     setup :: PRMaps.Setup,
+    sky_model :: String,
     nside :: Int,
 )
-    @info "Generating sky signal using pysm3"
-    signals = get_foreground_maps(instruments, nside)
+    @info "Generating sky signal and noise"
+    signals = get_foreground_maps(instruments, sky_model, nside)
+    noise = get_noise_maps(instruments, nside)
 
     @info "Simulating telescope scanning strategy [LSPE/Strip]"
     observations = get_observations(cam_ang, signals, setup)
 
     @info "Adding white noise based on the instruments sensitivity"
-    for indx in size(signals, 1)
-        add_white_noise!(observations[indx], instruments[indx], setup) 
+    for indx in axes(signals, 1)
+        observations[indx].i.pixels += noise[indx].i.pixels
+        observations[indx].q.pixels += noise[indx].q.pixels 
+        observations[indx].u.pixels += noise[indx].u.pixels 
     end
 
     @info "Run component separation using fgbuster"
-    return fgbuster_basic_comp_sep(observations, instruments)
+    return fgbuster_basic_comp_sep(instruments, observations)
 
 end
 
@@ -235,7 +255,7 @@ end
 
 function get_corrplot(result)
     sampling = py"get_mvDistibution"(result)
-    return corrplot(sampling, label = result["params"], size = (1500,700), fillcolor =:thermal, bottom_margin = 6Plots.mm, left_margin = 6Plots.mm)
+    return StatsPlots.corrplot(sampling, label = result["params"], size = (1500,700), fillcolor =:thermal, bottom_margin = 6Plots.mm, left_margin = 6Plots.mm)
 end
 
 function get_map_and_hist(result, stokes_param::String, nside::Int)
@@ -278,15 +298,15 @@ function get_map_and_hist(result, stokes_param::String, nside::Int)
     dust.pixels = result["s"][2,stokes_indx,:]
     synchrotron.pixels = result["s"][3,stokes_indx,:]
 
-    p1 = plot(cmb, title = "CMB_"*stokes_param, show = false)
-    p2 = plot(dust, title = "Dust_"*stokes_param, show = false)
-    p3 = plot(synchrotron, title = "Synchrotron_"*stokes_param, show = false)
+    p1 = Plots.plot(cmb, title = "CMB_"*stokes_param, show = false)
+    p2 = Plots.plot(dust, title = "Dust_"*stokes_param, show = false)
+    p3 = Plots.plot(synchrotron, title = "Synchrotron_"*stokes_param, show = false)
 
-    h1 = histogram(cmb[isfinite.(cmb)], normalize = true, show = false, legend = false)
-    h2 = histogram(dust[isfinite.(dust)], normalize = true, show = false, legend = false)
-    h3 = histogram(synchrotron[isfinite.(synchrotron)], normalize = true, show = false, legend = false)
+    h1 = Plots.histogram(cmb[isfinite.(cmb)], normalize = true, show = false, legend = false)
+    h2 = Plots.histogram(dust[isfinite.(dust)], normalize = true, show = false, legend = false)
+    h3 = Plots.histogram(synchrotron[isfinite.(synchrotron)], normalize = true, show = false, legend = false)
 
-    return plot(p1,p2,p3, h1,h2,h3, layout = (2,3), size = (1500, 500))
+    return Plots.plot(p1,p2,p3, h1,h2,h3, layout = (2,3), size = (1500, 500))
 end
 
 end # module thesis
