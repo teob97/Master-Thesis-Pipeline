@@ -238,9 +238,8 @@ function run_simulation_with_error(
     observations_strip = get_observations_with_error(cam_ang, tel_ang, signals_strip, setup)
 
     # Append LSPE/Strip result to the other results 
-    instruments = Pandas.concat(instruments, strip)
+    instruments = Pandas.concat([instruments, strip])
     append!(observations, observations_strip)
-
 
     @info "Adding white noise based on the instruments sensitivity"
     noise = get_noise_maps(instruments, nside)
