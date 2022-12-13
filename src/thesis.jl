@@ -9,12 +9,9 @@ using Random, Distributions
 using Logging
 import Stripeline as Sl
 
-export Instrument, run_simulation, run_simulation_with_error, get_corrplot, get_map_and_hist
-export get_single_map, get_observations, get_white_noise
-export add_white_noise!
-export map2vec, fgbuster_basic_comp_sep
-
-export get_foreground_maps, get_noise_maps
+export get_foreground_maps, get_noise_maps, get_observations
+export fgbuster_basic_comp_sep
+export run_simulation, run_simulation_with_error, get_corrplot, get_map_and_hist
 
 # Define python functions ---------------------------------------------------------------------------
 
@@ -217,7 +214,7 @@ function run_simulation(
 end
 
 function run_simulation_with_error(
-    instruments :: StructArrays.StructArray,
+    instruments,
     cam_ang :: Sl.CameraAngles,
     tel_ang :: Sl.TelescopeAngles,
     setup :: PRMaps.Setup,
