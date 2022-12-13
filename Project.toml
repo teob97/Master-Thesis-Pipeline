@@ -4,7 +4,6 @@ authors = ["Matteo Baratto <teo.baratto.97@gmail.com>"]
 version = "0.1.0"
 
 [deps]
-DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Healpix = "9f4e344d-96bc-545a-84a3-ae6b9e1b672b"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -15,4 +14,3 @@ PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Stripeline = "45029ab0-c194-11e8-0c82-65ed36a31fad"
-StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
