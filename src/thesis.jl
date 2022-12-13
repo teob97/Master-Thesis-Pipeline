@@ -205,7 +205,7 @@ function run_simulation(
     observations = get_observations(cam_ang, signals, setup)
 
     @info "Adding white noise based on the instruments sensitivity"
-    for indx in axes(signals, 1)
+    for indx in axes(observations, 1)
         observations[indx].i.pixels += noise[indx].i.pixels
         observations[indx].q.pixels += noise[indx].q.pixels 
         observations[indx].u.pixels += noise[indx].u.pixels 
@@ -232,21 +232,9 @@ function run_simulation_with_error(
     strip = query(instruments, :(instrument=="LSPE/Strip"))
     instruments = query(instruments, :(instrument!="LSPE/Strip"))
     
-    @info "Generating sky signal using pysm3"
+    @info "Generating sky signal"
     signals = get_foreground_maps(instruments, sky_model, nside)
     signals_strip = get_foreground_maps(strip, sky_model, nside)
-
-    @info "Adding white noise based on the instruments sensitivity"
-    for indx in axes(signals, 1)
-        observations[indx].i.pixels += noise[indx].i.pixels
-        observations[indx].q.pixels += noise[indx].q.pixels 
-        observations[indx].u.pixels += noise[indx].u.pixels 
-    end
-    for indx in axes(signals_strip, 1)
-        observations[indx].i.pixels += noise[indx].i.pixels
-        observations[indx].q.pixels += noise[indx].q.pixels 
-        observations[indx].u.pixels += noise[indx].u.pixels 
-    end
 
     @info "Simulating telescope scanning strategy [LSPE/Strip WITH pointing error]"
     observations = get_observations(cam_ang, signals, setup)
@@ -255,6 +243,16 @@ function run_simulation_with_error(
     # Append LSPE/Strip result to the other results 
     instruments = Pandas.concat(instruments, strip)
     append!(observations, observations_strip)
+
+
+    @info "Adding white noise based on the instruments sensitivity"
+    noise = get_noise_maps(instruments, nside)
+
+    for indx in axes(observations, 1)
+        observations[indx].i.pixels += noise[indx].i.pixels
+        observations[indx].q.pixels += noise[indx].q.pixels 
+        observations[indx].u.pixels += noise[indx].u.pixels 
+    end
 
     @info "Run component separation using fgbuster"
     return fgbuster_basic_comp_sep(instruments, observations)  
