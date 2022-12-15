@@ -2,7 +2,7 @@ Le simulazioni per la component separation sono realizzate con i seguenti parame
 
 - nside = 64
 - sampling frequency = 100 Hz
-- total time = 2 days
+- total time = 1 days
 
 Instruments:
 
