@@ -60,10 +60,10 @@ function map2vec(maps)
     return PyReverseDims(v)
 end
 
-function vec2map(vec)
+function vec2map(vec, nside)
     maps = Healpix.PolarizedHealpixMap[]
     for indx in axes(vec,1)
-        map = PolarizedHealpixMap{Float64, RingOrder}(64)
+        map = PolarizedHealpixMap{Float64, RingOrder}(nside)
         map.i.pixels = vec[indx,1,:]
         map.q.pixels = vec[indx,2,:]
         map.u.pixels = vec[indx,3,:]
@@ -82,7 +82,7 @@ function get_foreground_maps(
     unit::String = "uK_CMB"
 )
     results = py"get_freq_maps"(instruments, sky_model, nside, unit)
-    maps = vec2map(results)
+    maps = vec2map(results, nside)
     return maps
 end
 
@@ -92,7 +92,7 @@ function get_noise_maps(
     unit::String = "uK_CMB" 
 )
     results = py"get_noise_maps"(instruments, nside, unit)
-    maps = vec2map(results)
+    maps = vec2map(results, nside)
     return maps
 end
 
@@ -123,43 +123,6 @@ function get_observations_with_error(
     return observations 
 end
 
-# Genera rumero bianco per una singola PolarizedHealpixMap
-#= function get_white_noise(nside, sigma)
-
-    map = PolarizedHealpixMap{Float64, RingOrder}(nside)
-
-    noise_i = rand(Normal(0.0, sigma), nside*nside*12)
-    noise_q = rand(Normal(0.0, sigma), nside*nside*12)
-    noise_u = rand(Normal(0.0, sigma), nside*nside*12)
-
-    map.i.pixels = noise_i
-    map.q.pixels = noise_q
-    map.u.pixels = noise_u
-    
-    return map
-end
-
-function add_white_noise!(signal, instrument, setup)
-
-    nside = signal.i.resolution.nside
-
-    # Calcolo grandezza pixel in deg^2
-    pixel_size = Healpix.nside2pixarea(nside) * (180.0/π)^(2)
-    # Calcolo numero medio di volte che un pixel viene colpito
-    average_hits = (setup.total_time_s * setup.sampling_freq_Hz) / (nside * nside * 12)
-    # Divido errore pr la radice del numero medio di volte che pixel è colpito
-    sigma = (instrument.noisePerPixel * pixel_size) / sqrt(average_hits)
-    
-    noise = get_white_noise(nside, sigma)
-
-    signal.i = signal.i + noise.i
-    signal.q = signal.q + noise.q
-    signal.u = signal.u + noise.u
-
-end =#
-
-
-
 function fgbuster_basic_comp_sep(instruments, maps)
     data = map2vec(maps)
     return py"fgbuster_pipeline"(instruments, data)    
@@ -167,7 +130,7 @@ end
 
 
 # Simulation without poining errors
-function run_fbuster(
+function run_fgbuster(
     instruments,
     cam_ang :: Sl.CameraAngles,
     setup :: PRMaps.Setup,
