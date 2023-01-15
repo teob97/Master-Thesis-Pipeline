@@ -98,7 +98,7 @@ end
 
 # Lancia la scanning strategy per  i vari strumenti
 # cam_ang è sempre lo stesso nell'ipotesi che i vari strumenti osservino gli stessi pixel nel cielo
-function get_observations(
+#= function get_observations(
     cam_ang :: Sl.CameraAngles, 
     signals :: Vector{PolarizedHealpixMap}, 
     setup :: PRMaps.Setup
@@ -121,7 +121,7 @@ function get_observations_with_error(
         push!(observations, PRMaps.makeErroredMapIQU(cam_ang, tel_ang, signal, setup)[1])
     end
     return observations 
-end
+end =#
 
 function fgbuster_basic_comp_sep(instruments, maps)
     data = map2vec(maps)
@@ -142,8 +142,6 @@ function run_fgbuster(
     noise = get_noise_maps(instruments, nside)
 
     @info "Simulating telescope scanning strategy [LSPE/Strip]"
-    #observations = get_observations(cam_ang, signals, setup)
-
     observations, _ = PRMaps.makeIdealMapsIQU(cam_ang, signals, setup)
 
     @info "Adding white noise based on the instruments sensitivity"
