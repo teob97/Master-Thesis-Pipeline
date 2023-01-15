@@ -11,7 +11,7 @@ import Stripeline as Sl
 
 export get_foreground_maps, get_noise_maps, get_observations
 export fgbuster_basic_comp_sep
-export run_simulation, run_simulation_with_error, get_corrplot, get_map_and_hist
+export run_fgbuster, run_fgbuster_with_error, get_corrplot, get_map_and_hist
 
 # Define python functions ---------------------------------------------------------------------------
 
@@ -26,11 +26,6 @@ function __init__()
     import healpy as hp
     import numpy as np
 
-    #def pysm_sky_IQU(frequency, nside):
-    #    sky = pysm3.Sky(nside=nside, preset_strings=["c1","d0","s0"], output_unit=u.uK_RJ)
-    #    emission = sky.get_emission(frequency * u.GHz)
-    #    return pysm3.apply_smoothing_and_coord_transform(emission, rot=hp.Rotator(coord=("G", "C")))
-
     def get_freq_maps(instruments, sky_model, nside, unit):
         emissions = fgbuster.get_observation(instruments, sky_model, noise = False, nside = nside, unit = unit)
         for i,emission in enumerate(emissions):
@@ -39,13 +34,6 @@ function __init__()
 
     def get_noise_maps(instruments, nside, unit):
         return fgbuster.get_noise_realization(nside, instruments, unit)
-
-    #def get_df(instruments):
-    #    buffer = []
-    #    for i in instruments:
-    #        buffer.append([i.frequency])       
-    #    df = pd.DataFrame(buffer, columns = ['frequency'])        
-    #    return df
 
     def fgbuster_pipeline(instruments, data):
         components = [fgbuster.CMB(), fgbuster.Dust(353.), fgbuster.Synchrotron(23.)] 
@@ -56,14 +44,6 @@ function __init__()
     
     """
 end
-
-#------------------------------------------------------------------------------------------------------
-
-#= Base.@kwdef struct Instrument
-    name :: String = ""
-    frequency :: Float64 = 0.0
-    noisePerPixel :: Float64 = 0.0
-end =#
 
 #--------------------------------------------------------------------------------------------------------
 
@@ -187,7 +167,7 @@ end
 
 
 # Simulation without poining errors
-function run_simulation(
+function run_fbuster(
     instruments,
     cam_ang :: Sl.CameraAngles,
     setup :: PRMaps.Setup,
@@ -215,7 +195,7 @@ function run_simulation(
 
 end
 
-function run_simulation_with_error(
+function run_fgbuster_with_error(
     instruments,
     cam_ang :: Sl.CameraAngles,
     tel_ang :: Sl.TelescopeAngles,
@@ -312,6 +292,12 @@ function get_map_and_hist(result, stokes_param::String, nside::Int)
 
     return Plots.plot(p1,p2,p3, h1,h2,h3, layout = (2,3), size = (1500, 500))
 end
+
+# Error scaling simulation
+
+
+
+
 
 end # module thesis
 
