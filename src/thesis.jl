@@ -6,7 +6,7 @@ using Healpix
 using StatsPlots
 using Pandas
 using Random, Distributions
-using Logging
+using Dates
 import Stripeline as Sl
 
 export get_foreground_maps, get_noise_maps, get_observations
@@ -96,33 +96,6 @@ function get_noise_maps(
     return maps
 end
 
-# Lancia la scanning strategy per  i vari strumenti
-# cam_ang è sempre lo stesso nell'ipotesi che i vari strumenti osservino gli stessi pixel nel cielo
-#= function get_observations(
-    cam_ang :: Sl.CameraAngles, 
-    signals :: Vector{PolarizedHealpixMap}, 
-    setup :: PRMaps.Setup
-)
-    observations = Healpix.PolarizedHealpixMap[]
-    for signal in signals
-        push!(observations, PRMaps.makeIdealMapIQU(cam_ang, signal, setup)[1])
-    end
-    return observations 
-end
-
-function get_observations_with_error(
-    cam_ang :: Sl.CameraAngles,
-    tel_ang :: Sl.TelescopeAngles,
-    signals :: Vector{PolarizedHealpixMap}, 
-    setup :: PRMaps.Setup
-)
-    observations = Healpix.PolarizedHealpixMap[]
-    for signal in signals
-        push!(observations, PRMaps.makeErroredMapIQU(cam_ang, tel_ang, signal, setup)[1])
-    end
-    return observations 
-end =#
-
 function fgbuster_basic_comp_sep(instruments, maps)
     data = map2vec(maps)
     return py"fgbuster_pipeline"(instruments, data)    
@@ -135,23 +108,24 @@ function run_fgbuster(
     cam_ang :: Sl.CameraAngles,
     setup :: PRMaps.Setup,
     sky_model :: String,
-    nside :: Int
+    nside :: Int,
+    t_start :: Dates.DateTime
 )
-    @info "Generating sky signal and noise"
+    # "Generating sky signal and noise"
     signals = get_foreground_maps(instruments, sky_model, nside)
     noise = get_noise_maps(instruments, nside)
 
-    @info "Simulating telescope scanning strategy [LSPE/Strip]"
-    observations, _ = PRMaps.makeIdealMapsIQU(cam_ang, signals, setup)
+    # "Simulating telescope scanning strategy [LSPE/Strip]"
+    observations, _ = PRMaps.makeIdealMapsIQU(cam_ang, signals, setup, t_start)
 
-    @info "Adding white noise based on the instruments sensitivity"
+    # "Adding white noise based on the instruments sensitivity"
     for indx in axes(observations, 1)
         observations[indx].i.pixels += noise[indx].i.pixels
         observations[indx].q.pixels += noise[indx].q.pixels 
         observations[indx].u.pixels += noise[indx].u.pixels 
     end
 
-    @info "Run component separation using fgbuster"
+    # "Run component separation using fgbuster"
     return fgbuster_basic_comp_sep(instruments, observations)
 
 end
@@ -162,7 +136,8 @@ function run_fgbuster_with_error(
     tel_ang :: Sl.TelescopeAngles,
     setup :: PRMaps.Setup,
     sky_model :: String,
-    nside :: Int
+    nside :: Int,
+    t_start :: Dates.DateTime
 )
     # Separate LSPE/Strip experiment from the others
     if !any(instruments.instrument .== "LSPE/Strip")
@@ -172,19 +147,19 @@ function run_fgbuster_with_error(
     strip = query(instruments, :(instrument=="LSPE/Strip"))
     instruments = query(instruments, :(instrument!="LSPE/Strip"))
     
-    @info "Generating sky signal"
+    # "Generating sky signal"
     signals = get_foreground_maps(instruments, sky_model, nside)
     signals_strip = get_foreground_maps(strip, sky_model, nside)
 
-    @info "Simulating telescope scanning strategy [LSPE/Strip WITH pointing error]"
-    observations, _ = makeIdealMapsIQU(cam_ang, signals, setup)
-    observations_strip, _ = makeErroredMapsIQU(cam_ang, tel_ang, signals_strip, setup)
+    # "Simulating telescope scanning strategy [LSPE/Strip WITH pointing error]"
+    observations, _ = makeIdealMapsIQU(cam_ang, signals, setup, t_start)
+    observations_strip, _ = makeErroredMapsIQU(cam_ang, tel_ang, signals_strip, setup, t_start)
 
     # Append LSPE/Strip result to the other results 
     instruments = Pandas.concat([instruments, strip])
     append!(observations, observations_strip)
 
-    @info "Adding white noise based on the instruments sensitivity"
+    # "Adding white noise based on the instruments sensitivity"
     noise = get_noise_maps(instruments, nside)
 
     for indx in axes(observations, 1)
@@ -193,7 +168,7 @@ function run_fgbuster_with_error(
         observations[indx].u.pixels += noise[indx].u.pixels 
     end
 
-    @info "Run component separation using fgbuster"
+    # "Run component separation using fgbuster"
     return fgbuster_basic_comp_sep(instruments, observations)  
 
 end
