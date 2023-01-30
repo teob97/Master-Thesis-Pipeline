@@ -175,7 +175,7 @@ end
 
 function get_corrplot(result)
     sampling = py"get_mvDistibution"(result)
-    return StatsPlots.corrplot(sampling, label = result["params"], size = (1500,700), fillcolor =:thermal, bottom_margin = 6Plots.mm, left_margin = 6Plots.mm)
+    return StatsPlots.corrplot(sampling, label = result["params"], fillcolor =:thermal)
 end
 
 function get_map_and_hist(result, stokes_param::String, nside::Int)
@@ -226,7 +226,7 @@ function get_map_and_hist(result, stokes_param::String, nside::Int)
     h2 = Plots.histogram(dust[isfinite.(dust)], normalize = true, show = false, legend = false)
     h3 = Plots.histogram(synchrotron[isfinite.(synchrotron)], normalize = true, show = false, legend = false)
 
-    return Plots.plot(p1,p2,p3, h1,h2,h3, layout = (2,3), size = (1500, 500))
+    return (p1,p2,p3),(h1,h2,h3)
 end
 
 # Error scaling simulation
