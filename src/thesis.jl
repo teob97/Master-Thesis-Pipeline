@@ -35,8 +35,12 @@ function __init__()
     def get_noise_maps(instruments, nside, unit):
         return fgbuster.get_noise_realization(nside, instruments, unit)
 
-    def fgbuster_pipeline(instruments, data):
+    def fgbuster_pipeline_c1s0d0(instruments, data):
         components = [fgbuster.CMB(), fgbuster.Dust(353.), fgbuster.Synchrotron(23.)] 
+        return fgbuster.basic_comp_sep(components, instruments, data[:,1:])
+
+    def fgbuster_pipeline_c1s3d0(instruments, data):
+        components = [fgbuster.CMB(), fgbuster.Dust(353.), fgbuster.Synchrotron(23., running=None, nu_pivot=70.)] 
         return fgbuster.basic_comp_sep(components, instruments, data[:,1:])
 
     def get_mvDistibution(result):
@@ -96,9 +100,14 @@ function get_noise_maps(
     return maps
 end
 
-function fgbuster_basic_comp_sep(instruments, maps)
+function fgbuster_basic_comp_sep_c1s0d0(instruments, maps)
     data = map2vec(maps)
-    return py"fgbuster_pipeline"(instruments, data)    
+    return py"fgbuster_pipeline_c1s0d0"(instruments, data)    
+end
+
+function fgbuster_basic_comp_sep_c1s3d0(instruments, maps)
+    data = map2vec(maps)
+    return py"fgbuster_pipeline_c1s3d0"(instruments, data)    
 end
 
 
@@ -126,7 +135,13 @@ function run_fgbuster(
     end
 
     # "Run component separation using fgbuster"
-    return fgbuster_basic_comp_sep(instruments, observations)
+    if sky_model == "c1s0d0"
+        return fgbuster_basic_comp_sep_c1s0d0(instruments, observations)
+    elseif sky_model == "c1s3d0"
+        return fgbuster_basic_comp_sep_c1s3d0(instruments, observations)
+    else
+        return 0
+    end
 
 end
 
@@ -169,8 +184,14 @@ function run_fgbuster_with_error(
     end
 
     # "Run component separation using fgbuster"
-    return fgbuster_basic_comp_sep(instruments, observations)  
-
+    if sky_model == "c1s0d0"
+        return fgbuster_basic_comp_sep_c1s0d0(instruments, observations)
+    elseif sky_model == "c1s3d0"
+        return fgbuster_basic_comp_sep_c1s3d0(instruments, observations)
+    else
+        return 0
+    end
+    
 end
 
 function get_corrplot(result)
