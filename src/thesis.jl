@@ -40,7 +40,7 @@ function __init__()
         return fgbuster.basic_comp_sep(components, instruments, data[:,1:])
 
     def fgbuster_pipeline_c1s3d0(instruments, data):
-        components = [fgbuster.CMB(), fgbuster.Dust(353.), fgbuster.Synchrotron(23., running=None, nu_pivot=70.)] 
+        components = [fgbuster.CMB(), fgbuster.Dust(353.), fgbuster.Synchrotron(23., running=None, nu_pivot=23.)] 
         return fgbuster.basic_comp_sep(components, instruments, data[:,1:])
 
     def get_mvDistibution(result):
@@ -140,7 +140,7 @@ function run_fgbuster(
     elseif sky_model == "c1s3d0"
         return fgbuster_basic_comp_sep_c1s3d0(instruments, observations)
     else
-        return 0
+        error("Invalid sky model")
     end
 
 end
@@ -189,7 +189,7 @@ function run_fgbuster_with_error(
     elseif sky_model == "c1s3d0"
         return fgbuster_basic_comp_sep_c1s3d0(instruments, observations)
     else
-        return 0
+        error("Invalid sky model")
     end
     
 end
@@ -249,11 +249,6 @@ function get_map_and_hist(result, stokes_param::String, nside::Int)
 
     return (p1,p2,p3),(h1,h2,h3)
 end
-
-# Error scaling simulation
-
-
-
 
 
 end # module thesis
