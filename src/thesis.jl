@@ -184,9 +184,9 @@ function run_fgbuster_with_error(
 
     # "Run component separation using fgbuster"
     if sky_model == "c1s0d0"
-        return fgbuster_basic_comp_sep_c1s0d0(instruments, observations)
+        return (fgbuster_basic_comp_sep_c1s0d0(instruments, observations), observations)
     elseif sky_model == "c1s3d0"
-        return fgbuster_basic_comp_sep_c1s3d0(instruments, observations)
+        return (fgbuster_basic_comp_sep_c1s3d0(instruments, observations), observations)
     else
         error("Invalid sky model")
     end
