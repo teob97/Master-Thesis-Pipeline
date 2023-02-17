@@ -10,7 +10,8 @@ using Dates
 import Stripeline as Sl
 
 export get_foreground_maps, get_noise_maps, get_observations
-export run_fgbuster, run_fgbuster_with_error, get_corrplot, get_map_and_hist
+export run_fgbuster, run_fgbuster_with_error
+export get_corrplot, get_map_and_hist
 
 # Define python functions ---------------------------------------------------------------------------
 
@@ -35,7 +36,7 @@ function __init__()
         return fgbuster.get_noise_realization(nside, instruments, unit)
 
     def fgbuster_pipeline_c1s0d0(instruments, data):
-        components = [fgbuster.CMB(), fgbuster.Dust(353., temp = 20.0), fgbuster.Synchrotron(23.)]        
+        components = [fgbuster.CMB(), fgbuster.Dust(353., temp = 20.0, beta_d = 1.54), fgbuster.Synchrotron(23.)]        
         return fgbuster.basic_comp_sep(components, instruments, data[:,1:])
 
     def fgbuster_pipeline_c1s3d0(instruments, data):
@@ -144,7 +145,7 @@ function run_fgbuster(
 
 end
 
-function run_fgbuster_with_error(
+#= function run_fgbuster_with_error_old(
     instruments,
     cam_ang :: Sl.CameraAngles,
     tel_ang :: Sl.TelescopeAngles,
@@ -191,7 +192,59 @@ function run_fgbuster_with_error(
         error("Invalid sky model")
     end
     
+end =#
+
+
+function run_fgbuster_with_error(
+    instruments,
+    cam_ang :: Sl.CameraAngles,
+    tel_ang :: Sl.TelescopeAngles,
+    setup :: PRMaps.Setup,
+    sky_model :: String,
+    nside :: Int,
+    t_start :: Dates.DateTime
+)
+    # Separate LSPE/Strip experiment from the others
+    if !any(instruments.instrument .== "LSPE/Strip")
+        error("Invalid simulation: no Instrument named LSPE/Strip found")
+    end
+    # Remove LSPE/Strip from the instruments vector and store them in another vector 
+    strip = query(instruments, :(instrument=="LSPE/Strip"))
+    instruments = query(instruments, :(instrument!="LSPE/Strip"))
+    
+    # "Generating sky signal"
+    observations = get_foreground_maps(instruments, sky_model, nside)
+
+    # "Simulating telescope scanning strategy [LSPE/Strip WITH pointing error]"
+    signals_strip = get_foreground_maps(strip, sky_model, nside)
+    observations_strip, _ = makeErroredMapsIQU(cam_ang, tel_ang, signals_strip, setup, t_start)
+
+    # Append LSPE/Strip result to the other results 
+    instruments = Pandas.concat([instruments, strip])
+    append!(observations, observations_strip)
+
+    # "Adding white noise based on the instruments sensitivity"
+    noise = get_noise_maps(instruments, nside)
+
+    for indx in axes(observations, 1)
+        observations[indx].i.pixels += noise[indx].i.pixels
+        observations[indx].q.pixels += noise[indx].q.pixels 
+        observations[indx].u.pixels += noise[indx].u.pixels 
+    end
+
+    # "Run component separation using fgbuster"
+    if sky_model == "c1s0d0"
+        return (fgbuster_basic_comp_sep_c1s0d0(instruments, observations), observations)
+    elseif sky_model == "c1s3d0"
+        return (fgbuster_basic_comp_sep_c1s3d0(instruments, observations), observations)
+    else
+        error("Invalid sky model")
+    end
+    
 end
+
+
+# Plot function
 
 function get_corrplot(result)
     sampling = py"get_mvDistibution"(result)
