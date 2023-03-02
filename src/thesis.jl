@@ -36,7 +36,7 @@ function __init__()
         return fgbuster.get_noise_realization(nside, instruments, unit)
 
     def fgbuster_pipeline_c1s0d0(instruments, data):
-        components = [fgbuster.CMB(), fgbuster.Dust(353., temp = 20.0, beta_d = 1.54), fgbuster.Synchrotron(23.)]        
+        components = [fgbuster.CMB(), fgbuster.Dust(353., temp = 20.0, beta_d = 1.54), fgbuster.Synchrotron(23.)]#, running=None, nu_pivot=70.)]     
         return fgbuster.basic_comp_sep(components, instruments, data[:,1:])
 
     def fgbuster_pipeline_c1s3d0(instruments, data):
