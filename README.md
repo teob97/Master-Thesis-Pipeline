@@ -22,7 +22,7 @@ strip = read_pickle("../instruments/lspe_strip_instrument.pkl")
 nside = 512
 
 # Generate the maps
-maps = function get_foreground_maps(
+maps = get_foreground_maps(
     instruments
     sky_model, 
     nside
