@@ -10,3 +10,37 @@ Once the Julia environment has been successfully activated, it is necessary to c
 
 ## Simple usage example
 
+Below I report a simple example containing a component separation analysis implemented by introducing a systematic pointing error in the 43 GHz LSPE/Strip channel.
+
+First it is necessary to choose which instruments you have to simulate; all of the aviable instruments are stored into `.pkl` file into the [instruments](instruments) directory:
+
+```
+using Pandas
+
+swipe = read_pickle("../instruments/lspe_swipe_instrument.pkl")
+strip = read_pickle("../instruments/lspe_strip_instrument.pkl")
+
+instruments = concat([strip, swipe])
+```
+
+Then you have to decide the simulation setup for the LSPE/Strip telescope:
+
+```
+# Choose a Healpix map resolution
+nside = 128
+
+# Choose the sky model to observe
+sky_model = "c1s0d0"
+
+# Choose the starting day of the simulation and the number of days to simulate 
+t_start = DateTime(2022, 1, 1, 12, 0, 0)
+days = 10
+    
+setup = PRMaps.Setup(
+    sampling_freq_Hz = 50.0,
+    total_time_s = 24. * 3600. * days
+)
+
+# Choose the detector to simulate (in this case H0)
+cam_ang = Sl.CameraAngles()
+```
